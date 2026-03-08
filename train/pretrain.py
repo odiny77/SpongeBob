@@ -168,7 +168,7 @@ if __name__ == "__main__":
 
     if args.eval_bench == 1:
         from transformers import AutoTokenizer
-        tokenizer = AutoTokenizer.from_pretrained('/apdcephfs_qy4/share_302593112/huaibingxie/SpongeBob/tokenizer_15k')
+        tokenizer = AutoTokenizer.from_pretrained('/Users/sakura/Desktop/SpongeBob/tokenizer_15k')
         Logger('Tokenizer loaded for benchmark evaluation')
     else:
         tokenizer = None
