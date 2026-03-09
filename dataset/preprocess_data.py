@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+     #!/usr/bin/env python3
 """
 预训练数据预处理脚本
 离线将jsonl处理成二进制文件(.bin)，用于高效训练

@@ -1,4 +1,6 @@
+      
 from transformers import PretrainedConfig
+
 
 class SpongeBobConfig(PretrainedConfig):
     """
@@ -29,7 +31,7 @@ class SpongeBobConfig(PretrainedConfig):
             num_hidden_layers: int = 12,
             num_attention_heads: int = 12,
             num_key_value_heads: int = 4,
-            intermediate_size: int = 2048,##FFN中间维度
+            intermediate_size: int = 2048,
             vocab_size: int = 15000,
             
             # 位置编码
@@ -37,7 +39,7 @@ class SpongeBobConfig(PretrainedConfig):
             rope_theta: float = 10000.0,
             
             # 激活函数和正则化
-            hidden_act: str = 'silu', #swish
+            hidden_act: str = 'silu',
             dropout: float = 0.0,
             rms_norm_eps: float = 1e-05,
             
@@ -64,3 +66,5 @@ class SpongeBobConfig(PretrainedConfig):
         self.rms_norm_eps = rms_norm_eps
         self.rope_theta = rope_theta
         self.flash_attn = flash_attn
+
+    

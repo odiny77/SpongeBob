@@ -1,3 +1,4 @@
+      
 import math
 import torch
 import torch.nn.init as init
@@ -8,6 +9,7 @@ from typing import Optional, Tuple, List, Union
 from transformers import PreTrainedModel, GenerationMixin, PretrainedConfig
 from transformers.modeling_outputs import CausalLMOutputWithPast
 from .config import SpongeBobConfig
+
 
 class RMSNorm(torch.nn.Module):
     def __init__(self, dim: int, eps: float = 1e-5):
@@ -27,7 +29,7 @@ def precompute_freqs_cis(dim: int, end: int = int(32 * 1024), rope_base: float =
     预计算 RoPE (Rotary Position Embedding) 的 cos 和 sin 频率
     
     Args:
-        dim: 注意力头的维度 (head_dim) 
+        dim: 注意力头的维度 (head_dim)
         end: 最大序列长度
         rope_base: RoPE 的基础频率，默认 1e6
     
@@ -35,53 +37,43 @@ def precompute_freqs_cis(dim: int, end: int = int(32 * 1024), rope_base: float =
         freqs_cos: cos 频率张量 (end, dim)
         freqs_sin: sin 频率张量 (end, dim)
     """
-    # 计算频率：θ_i = base^(-2i/d), i ∈ [0, d/2)，生成 dim//2 个频率
-    freqs = 1.0 / (rope_base ** (torch.arange(0, dim, 2).float() / dim))
+    # 计算频率：θ_i = base^(-2i/d), i ∈ [0, d/2)
+    freqs = 1.0 / (rope_base ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))
     
-    # 计算每个位置的频率：pos * θ_i，形状 (end, dim//2)
-    freqs = torch.outer(torch.arange(end, device=freqs.device), freqs).float()
+    # 生成位置索引 [0, 1, 2, ..., end-1]
+    t = torch.arange(end, device=freqs.device)
     
-    # 计算 cos 和 sin，并复制一次以匹配 head_dim（用于两两分组）
-    freqs_cos = torch.cat([torch.cos(freqs), torch.cos(freqs)], dim=-1)  # (end, dim)
-    freqs_sin = torch.cat([torch.sin(freqs), torch.sin(freqs)], dim=-1)  # (end, dim)
+    # 计算每个位置的频率：pos * θ_i
+    freqs = torch.outer(t, freqs).float()
+    
+    # 计算 cos 和 sin，并复制一次（用于 rotate_half）
+    freqs_cos = torch.cat([torch.cos(freqs), torch.cos(freqs)], dim=-1)
+    freqs_sin = torch.cat([torch.sin(freqs), torch.sin(freqs)], dim=-1)
     
     return freqs_cos, freqs_sin
 
 
 def apply_rotary_pos_emb(q, k, cos, sin, position_ids=None, unsqueeze_dim=1):
     """
-    应用 RoPE
+    应用 RoPE (Rotary Position Embedding) 到 query 和 key
+    
     Args:
-        position_ids: (batch, seq_len) 用于推理时指定位置
+        q: Query 张量 (batch, seq_len, num_heads, head_dim)
+        k: Key 张量 (batch, seq_len, num_kv_heads, head_dim)
+        cos: 预计算的 cos 频率
+        sin: 预计算的 sin 频率
+        unsqueeze_dim: 用于广播的维度
+    
+    Returns:
+        q_embed: 应用 RoPE 后的 query
+        k_embed: 应用 RoPE 后的 key
     """
-    # 1. 处理 cos/sin 的切片 (支持推理/KV Cache)
-    # 如果传入了 position_ids，则根据 id 选取对应的 cos/sin
-    if position_ids is not None:
-        # cos: (end, dim) -> (batch, seq_len, dim)
-        cos = cos[position_ids]
-        sin = sin[position_ids]
-        
-        # 此时 cos/sin 已经是 (batch, seq_len, dim)，我们需要广播到 head 维度
-        # q: (batch, seq, heads, dim)
-        # 这种情况下通常 unsqueeze_dim=2 (heads维度)
-        cos = cos.unsqueeze(2) # (batch, seq, 1, dim)
-        sin = sin.unsqueeze(2)
-    else:
-        # 兼容旧逻辑：假设 seq_len 从 0 开始且连续 (训练时常用)
-        # 截取当前序列长度
-        seq_len = q.shape[1]
-        cos = cos[:seq_len].unsqueeze(unsqueeze_dim) # (seq, 1, dim)
-        sin = sin[:seq_len].unsqueeze(unsqueeze_dim)
-
-    # 2. 修正后的 rotate_half (LLaMA 风格)
-    # 配合 precompute 的 cat([cos, cos])，这里必须将 tensor 切分为前后两半
     def rotate_half(x):
-        x1, x2 = x.chunk(2, dim=-1) # 将最后一维切分成两半
-        return torch.cat((-x2, x1), dim=-1)
+        """将特征维度分成两半并交换位置（用于 RoPE 旋转）"""
+        return torch.cat((-x[..., x.shape[-1] // 2:], x[..., : x.shape[-1] // 2]), dim=-1)
 
-    # 3. 计算
-    q_embed = (q * cos) + (rotate_half(q) * sin)
-    k_embed = (k * cos) + (rotate_half(k) * sin)
+    q_embed = (q * cos.unsqueeze(unsqueeze_dim)) + (rotate_half(q) * sin.unsqueeze(unsqueeze_dim))
+    k_embed = (k * cos.unsqueeze(unsqueeze_dim)) + (rotate_half(k) * sin.unsqueeze(unsqueeze_dim))
     return q_embed, k_embed
 
 
@@ -106,7 +98,6 @@ def repeat_kv(x: torch.Tensor, n_rep: int) -> torch.Tensor:
 
 
 class Attention(nn.Module):
-
     """
     多头注意力机制（支持 Grouped Query Attention 和 Flash Attention）
     """
@@ -128,7 +119,7 @@ class Attention(nn.Module):
         self.o_proj = nn.Linear(args.num_attention_heads * self.head_dim, args.hidden_size, bias=False)
         
         # Dropout
-        self.dropout = nn.Dropout(args.dropout)
+        self.attn_dropout = nn.Dropout(args.dropout)
         self.resid_dropout = nn.Dropout(args.dropout)
         self.dropout = args.dropout
         
@@ -216,7 +207,7 @@ class Attention(nn.Module):
         else:
             # 传统 Attention 实现（用于推理时的 KV cache 或 PyTorch < 2.0）
             scores = (xq @ xk.transpose(-2, -1)) / math.sqrt(self.head_dim)
-                
+            
             # 应用 causal mask（上三角设为 -inf）
             scores[:, :, :, -seq_len:] += torch.triu(torch.full((seq_len, seq_len), float("-inf"), device=scores.device), diagonal=1)
 
@@ -265,14 +256,16 @@ class SpongeBobBlock(nn.Module):
     Transformer 块：Self-Attention + FeedForward
     采用 Pre-Norm 结构（Norm before attention/mlp）
     """
-    def __init__(self,config: SpongeBobConfig):
+    def __init__(self, layer_id: int, config: SpongeBobConfig):
         super().__init__()
         self.num_attention_heads = config.num_attention_heads
         self.hidden_size = config.hidden_size
         self.head_dim = config.hidden_size // config.num_attention_heads
         self.self_attn = Attention(config)
 
-        self.layernorm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        self.layer_id = layer_id
+        self.input_layernorm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        self.post_attention_layernorm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.mlp = FeedForward(config)
 
     def forward(self, hidden_states, position_embeddings, past_key_value=None, use_cache=False, attention_mask=None):
@@ -286,13 +279,13 @@ class SpongeBobBlock(nn.Module):
         # Self-Attention with residual connection
         residual = hidden_states
         hidden_states, present_key_value = self.self_attn(
-            self.layernorm(hidden_states), position_embeddings,
+            self.input_layernorm(hidden_states), position_embeddings,
             past_key_value, use_cache, attention_mask
         )
         hidden_states += residual
         
         # FeedForward with residual connection
-        hidden_states = hidden_states + self.mlp(self.layernorm(hidden_states)) 
+        hidden_states = hidden_states + self.mlp(self.post_attention_layernorm(hidden_states))
         return hidden_states, present_key_value
 
 
@@ -302,14 +295,15 @@ class SpongeBobModel(nn.Module):
     """
     def __init__(self, config: SpongeBobConfig):
         super().__init__()
-        self.num_hidden_layers =config.num_hidden_layers
+        self.config = config
+        self.vocab_size, self.num_hidden_layers = config.vocab_size, config.num_hidden_layers
         
         # Token Embedding
         self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size)
         self.dropout = nn.Dropout(config.dropout)
         
         # Transformer Blocks
-        self.layers = nn.ModuleList([SpongeBobBlock(config) for l in range(self.num_hidden_layers)])
+        self.layers = nn.ModuleList([SpongeBobBlock(l, config) for l in range(self.num_hidden_layers)])
         
         # 最终的 LayerNorm
         self.norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
@@ -362,8 +356,8 @@ class SpongeBobModel(nn.Module):
         )
 
         # 逐层前向传播
-        present_key_values = []
-        for layer, past_key_value in enumerate(zip(self.layers, past_key_values)):
+        presents = []
+        for layer_idx, (layer, past_key_value) in enumerate(zip(self.layers, past_key_values)):
             hidden_states, present = layer(
                 hidden_states,
                 position_embeddings,
@@ -371,11 +365,11 @@ class SpongeBobModel(nn.Module):
                 use_cache=use_cache,
                 attention_mask=attention_mask
             )
-            present_key_values.append(present)
+            presents.append(present)
 
         # 最终 LayerNorm
         hidden_states = self.norm(hidden_states)
-        return hidden_states, present_key_values
+        return hidden_states, presents
 
 
 class SpongeBobForCausalLM(PreTrainedModel, GenerationMixin):
@@ -454,8 +448,4 @@ class SpongeBobForCausalLM(PreTrainedModel, GenerationMixin):
         )
         return output
 
-
-
-
-
-
+    

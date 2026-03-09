@@ -1,3 +1,4 @@
+      
 """
 简单的 Benchmark 评测模块
 支持 C3 和 XCOPA 数据集的评测
@@ -209,3 +210,5 @@ def run_benchmark(model, tokenizer, c3_path, xcopa_path):
     raw_model.train()  # 恢复训练模式
     
     return results
+
+    

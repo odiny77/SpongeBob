@@ -82,7 +82,6 @@ def train_tokenizer(data_path, tokenizer_dir, vocab_size, special_tokens, max_li
     texts = get_texts(data_path, max_lines=max_lines)
     tokenizer.train_from_iterator(texts, trainer=trainer)
     tokenizer.decoder = decoders.ByteLevel()
-    
     print("训练阶段完成，开始保存...")
     
     # 验证特殊tokens

@@ -1,3 +1,4 @@
+      
 """
 SpongeBob 预训练数据集
 加载预处理好的二进制数据
@@ -48,3 +49,9 @@ class PretrainDataset(Dataset):
         chunk = torch.from_numpy(self.data[idx].astype(np.int64))
         # 直接返回整个 chunk 作为 input_ids 和 labels
         return chunk.clone(), chunk.clone()
+
+
+
+
+
+    
