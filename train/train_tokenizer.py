@@ -14,7 +14,7 @@ os.environ['TOKENIZERS_PARALLELISM'] = 'true'
 
 # 配置
 DATA_PATH = ''
-TOKENIZER_DIR = '/Users/sakura/Desktop/SpongeBob/tokenizer_15k'
+TOKENIZER_DIR = ''
 VOCAB_SIZE = 15000
 
 # 特殊tokens（15个）
