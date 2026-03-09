@@ -23,10 +23,10 @@ from torch import optim, nn
 from torch.nn.parallel import DistributedDataParallel  # [DDP] DDP 包模型；without_ddp 无
 from torch.utils.data import DataLoader, DistributedSampler  # [DDP] 多卡用 DistributedSampler；without_ddp 仅 DataLoader
 from model.config import SpongeBobConfig
-from model.model_spongebob_pro import SpongeBobForCausalLM
+from model.model_spongebob import SpongeBobForCausalLM
 from dataset.pretrain_dataset import PretrainDataset
 from utils import get_lr, Logger, is_main_process, init_distributed_mode, SkipBatchSampler  # [DDP] is_main_process/init_distributed_mode 仅 DDP 用；without_ddp 无
-from benchmark.pretrain.evaluator import run_benchmark
+from benchmark.evaluator import run_benchmark
 
 _BENCH_PRETRAIN_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "benchmark", "pretrain")
 
